@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PetFy - Cadastro de Animais</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class', theme: { extend: { colors: {
+      pet: { green: '#a3e635', hover: '#bef264', black: '#090b08', dark: '#121510',
+        card: '#191d16', cardHover: '#252b20', border: '#30382a', subtext: '#a4ad9a' }
+    }}}};
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family:'Plus Jakarta Sans',sans-serif;background:#090b08;color:white; }
+    .hero { background:linear-gradient(180deg,#283b1d 0%,#121510 100%); }
+    .modal { background:rgba(18,21,16,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1); }
+    .hide-scrollbar::-webkit-scrollbar{display:none}.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
+  </style>
+</head>
+<body class="bg-pet-black text-white min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useMemo}=React;
+const Icons={
+  Paw:({size=24})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 14s1.5-2 4-2 4 2 4 2 3 1.5 3 4-2 3-4 2-5-2-7 0-4 0-4-2 1-3.5 4-4Z"/><ellipse cx="5.5" cy="8" rx="2" ry="3"/><ellipse cx="10" cy="5" rx="2" ry="3"/><ellipse cx="16" cy="5" rx="2" ry="3"/><ellipse cx="20" cy="8" rx="2" ry="3"/></svg>,
+  Home:({size=20})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>,
+  Plus:({size=18})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>,
+  Search:({size=18})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>,
+  Edit:({size=16})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 5 4 4M4 20l4-.8L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>,
+  Trash:({size=16})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"/></svg>
+};
+const EMPTY={nome:'',especie:'CACHORRO',raca:'',sexo:'',dataNascimento:'',peso:'',cor:'',castrado:false,vacinacao:'EM_DIA',observacoes:''};
+function App(){
+  const [tela,setTela]=useState('principal');
+  const [apiUrl,setApiUrl]=useState('http://localhost:8080/api/animais');
+  const [urlEdit,setUrlEdit]=useState(apiUrl);
+  const [showConfig,setShowConfig]=useState(false);
+  const [statusApi,setStatusApi]=useState('carregando');
+  const [erroDetalhe,setErroDetalhe]=useState('');
+  const [animais,setAnimais]=useState([]);
+  const [busca,setBusca]=useState('');
+  const [filtro,setFiltro]=useState('TODOS');
+  const [form,setForm]=useState(EMPTY);
+  const [editando,setEditando]=useState(null);
+  const [deletando,setDeletando]=useState(null);
+  const [toast,setToast]=useState(null);
+  const [carregando,setCarregando]=useState(false);
+  const avisar=(mensagem,tipo='info')=>{setToast({mensagem,tipo});setTimeout(()=>setToast(null),3800)};
+  const request=async(path='',options={})=>{
+    const res=await fetch(`${apiUrl.replace(/\/$/,'')}${path}`,options);
+    if(!res.ok) throw new Error(`A API respondeu com status ${res.status}`);
+    if(res.status===204)return null;
+    const text=await res.text(); return text?JSON.parse(text):null;
+  };
+  const carregarAnimais=async()=>{
+    setCarregando(true);setErroDetalhe('');
+    try{
+      const dados=await request();
+      setAnimais(Array.isArray(dados)?dados:(dados?[dados]:[]));
+      setStatusApi('conectado');
+    }catch(e){setStatusApi('erro');setErroDetalhe(e.message||'Não foi possível conectar à API.');}
+    finally{setCarregando(false);}
+  };
+  useEffect(()=>{carregarAnimais()},[apiUrl]);
+  const salvar=async(e)=>{
+    e.preventDefault();
+    const dados={...form,peso:form.peso===''?null:Number(form.peso)};
+    try{
+      if(editando!==null){
+        await request('/'+editando,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(dados)});
+        avisar('Animal atualizado pela API!','sucesso');
+      }else{
+        await request('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(dados)});
+        avisar('Animal cadastrado na API!','sucesso');
+      }
+      setForm(EMPTY);setEditando(null);setTela('principal');await carregarAnimais();
+    }catch(err){avisar(`Não foi possível salvar. ${err.message}`,'erro');}
+  };
+  const editar=(a)=>{
+    setForm({nome:a.nome||'',especie:a.especie||'CACHORRO',raca:a.raca||'',sexo:a.sexo||'',dataNascimento:a.dataNascimento||'',peso:a.peso??'',cor:a.cor||'',castrado:!!a.castrado,vacinacao:a.vacinacao||'EM_DIA',observacoes:a.observacoes||''});
+    setEditando(a.id);setTela('cadastro');
+  };
+  const excluir=async(id)=>{
+    try{await request('/'+id,{method:'DELETE'});avisar('Animal excluído pela API!','sucesso');setDeletando(null);await carregarAnimais();}
+    catch(err){avisar(`Não foi possível excluir. ${err.message}`,'erro');}
+  };
+  const filtrados=useMemo(()=>animais.filter(a=>{
+    const texto=[a.nome,a.especie,a.raca,a.cor].filter(Boolean).join(' ').toLowerCase();
+    return texto.includes(busca.toLowerCase())&&(filtro==='TODOS'||a.especie===filtro);
+  }),[animais,busca,filtro]);
+  const dogs=animais.filter(a=>a.especie==='CACHORRO').length;
+  const cats=animais.filter(a=>a.especie==='GATO').length;
+  const field='w-full bg-neutral-900 border border-pet-border rounded-lg p-3 text-sm text-white focus:outline-none focus:border-lime-400 transition';
+  const label='block text-pet-subtext font-bold mb-1.5 uppercase tracking-wider text-[10px]';
+  return <div className="flex min-h-screen bg-pet-black text-white">
+    {toast&&<div className={`fixed top-5 right-5 z-[70] px-4 py-3 rounded-xl text-xs font-semibold shadow-2xl border ${toast.tipo==='sucesso'?'bg-neutral-900 text-lime-300 border-lime-500/40':toast.tipo==='erro'?'bg-neutral-900 text-rose-400 border-rose-500/40':'bg-neutral-900 text-white border-neutral-700'}`}>{toast.mensagem}</div>}
+    <aside className="w-64 bg-black p-5 hidden md:flex flex-col justify-between border-r border-neutral-900">
+      <div className="space-y-8">
+        <div className="flex items-center gap-3 px-2"><span className="text-lime-300"><Icons.Paw size={30}/></span><span className="text-2xl font-extrabold">pet<span className="text-lime-300">Fy</span></span></div>
+        <nav className="space-y-2">
+          <button onClick={()=>setTela('principal')} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-bold ${tela==='principal'?'bg-pet-cardHover text-lime-300':'text-pet-subtext hover:text-white'}`}><Icons.Home/> Animais cadastrados</button>
+          <button onClick={()=>{setForm(EMPTY);setEditando(null);setTela('cadastro')}} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-bold ${tela==='cadastro'?'bg-pet-cardHover text-lime-300':'text-pet-subtext hover:text-white'}`}><Icons.Plus/> Cadastrar animal</button>
+        </nav>
+      </div>
+      <div className="bg-pet-dark p-3 rounded-xl border border-pet-border">
+        <span className="text-pet-subtext block text-[10px] uppercase font-bold mb-1">API Backend</span>
+        <div className="text-[11px] font-mono break-all mb-3">{apiUrl}</div>
+        <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 text-xs"><span className={`w-2 h-2 rounded-full ${statusApi==='conectado'?'bg-lime-400':statusApi==='carregando'?'bg-amber-400':'bg-rose-500'}`}></span>{statusApi==='conectado'?'Conectada':statusApi==='carregando'?'Conectando':'Erro de conexão'}</span><button onClick={()=>{setUrlEdit(apiUrl);setShowConfig(true)}} className="text-xs text-lime-300 hover:underline">Alterar</button></div>
+      </div>
+    </aside>
+    <main className="flex-1 min-w-0">
+      <header className="sticky top-0 z-30 bg-black/90 backdrop-blur border-b border-neutral-900 px-5 md:px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 md:hidden"><span className="text-lime-300"><Icons.Paw size={26}/></span><b className="text-xl">pet<span className="text-lime-300">Fy</span></b></div>
+        <div className="hidden md:block text-xs text-pet-subtext">PET SHOP / <span className="text-white">{tela==='cadastro'?'CADASTRO':'PAINEL'}</span></div>
+        <div className="flex gap-2">
+          <button onClick={()=>carregarAnimais()} className="px-3 py-2 rounded-full border border-pet-border text-xs font-bold hover:bg-pet-card">{carregando?'Atualizando...':'↻ Atualizar'}</button>
+          <button onClick={()=>{setForm(EMPTY);setEditando(null);setTela('cadastro')}} className="flex items-center gap-2 px-4 py-2 rounded-full bg-lime-300 text-black text-xs font-extrabold hover:bg-lime-200"><Icons.Plus/> Novo animal</button>
+        </div>
+      </header>
+      <div className="p-5 md:p-8 max-w-7xl mx-auto">
+        {tela==='principal'?<>
+          <section className="hero rounded-2xl p-7 md:p-10 mb-7 border border-lime-900/40">
+            <p className="text-lime-300 text-xs uppercase tracking-[.25em] font-extrabold mb-3">Cuidado que começa pelo cadastro</p>
+            <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-3">Cada pet tem sua <span className="text-lime-300">história.</span></h1>
+            <p className="text-pet-subtext max-w-xl text-sm leading-6">Gerencie os animais atendidos pelo pet shop em um só lugar. Os dados são carregados e salvos diretamente na sua API.</p>
+          </section>
+          {statusApi==='erro'&&<div className="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm"><b className="text-rose-300">Não foi possível conectar à API.</b><p className="text-pet-subtext mt-1">{erroDetalhe}</p><p className="text-pet-subtext mt-1">Confira a URL, se o backend está em execução e se o CORS está configurado.</p><button onClick={()=>{setUrlEdit(apiUrl);setShowConfig(true)}} className="mt-3 text-lime-300 font-bold hover:underline">Configurar endpoint</button></div>}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-7">
+            <div className="bg-pet-card border border-pet-border rounded-xl p-5"><p className="text-pet-subtext text-xs font-bold uppercase">Total de animais</p><p className="text-3xl font-extrabold mt-2">{animais.length}</p></div>
+            <div className="bg-pet-card border border-pet-border rounded-xl p-5"><p className="text-pet-subtext text-xs font-bold uppercase">Cachorros</p><p className="text-3xl font-extrabold mt-2">{dogs}</p></div>
+            <div className="bg-pet-card border border-pet-border rounded-xl p-5"><p className="text-pet-subtext text-xs font-bold uppercase">Gatos</p><p className="text-3xl font-extrabold mt-2">{cats}</p></div>
+          </div>
+          <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between mb-5">
+            <div><h2 className="text-xl font-extrabold">Animais cadastrados</h2><p className="text-pet-subtext text-xs mt-1">Registros retornados pela API REST</p></div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex items-center gap-2 bg-pet-dark border border-pet-border rounded-full px-4"><Icons.Search/><input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar nome, raça..." className="bg-transparent py-2.5 text-sm outline-none w-full sm:w-48"/></div>
+              <select value={filtro} onChange={e=>setFiltro(e.target.value)} className="bg-pet-dark border border-pet-border rounded-full px-4 py-2.5 text-sm outline-none"><option value="TODOS">Todas as espécies</option><option value="CACHORRO">Cachorros</option><option value="GATO">Gatos</option><option value="AVE">Aves</option><option value="ROEDOR">Roedores</option><option value="OUTRO">Outros</option></select>
+            </div>
+          </div>
+          {carregando&&animais.length===0?<div className="text-center py-16 text-pet-subtext">Carregando animais da API...</div>:filtrados.length===0?<div className="bg-pet-card border border-pet-border rounded-2xl p-12 text-center"><div className="text-lime-300 flex justify-center mb-4"><Icons.Paw size={42}/></div><h3 className="font-extrabold text-lg">{statusApi==='erro'?'Não foi possível carregar os animais':'Nenhum animal encontrado'}</h3><p className="text-pet-subtext text-sm mt-2">{statusApi==='erro'?'Verifique a conexão com o backend.':'Cadastre o primeiro pet ou altere os filtros da busca.'}</p><button onClick={()=>{setForm(EMPTY);setEditando(null);setTela('cadastro')}} className="mt-5 inline-flex items-center gap-2 rounded-full bg-lime-300 text-black px-5 py-3 font-extrabold text-sm"><Icons.Plus/> Cadastrar animal</button></div>:
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{filtrados.map((a,i)=><article key={a.id??i} className="bg-pet-card border border-pet-border rounded-2xl p-5 hover:bg-pet-cardHover transition">
+            <div className="flex justify-between items-start gap-3"><div className="flex gap-3 min-w-0"><div className="w-12 h-12 shrink-0 rounded-xl bg-lime-300/10 text-lime-300 flex items-center justify-center"><Icons.Paw size={25}/></div><div className="min-w-0"><h3 className="font-extrabold text-lg truncate">{a.nome||'Sem nome'}</h3><p className="text-pet-subtext text-xs mt-1">{a.especie||'Espécie não informada'} {a.raca?'· '+a.raca:''}</p></div></div><span className="text-[10px] font-bold bg-neutral-800 text-lime-300 px-2 py-1 rounded-full">#{a.id??'—'}</span></div>
+            <div className="grid grid-cols-2 gap-3 mt-5 text-xs"><div className="bg-black/30 rounded-lg p-3"><p className="text-pet-subtext mb-1">Sexo</p><b>{a.sexo||'Não informado'}</b></div><div className="bg-black/30 rounded-lg p-3"><p className="text-pet-subtext mb-1">Peso</p><b>{a.peso!=null&&a.peso!==''?a.peso+' kg':'Não informado'}</b></div><div className="bg-black/30 rounded-lg p-3"><p className="text-pet-subtext mb-1">Vacinação</p><b>{a.vacinacao||'Não informado'}</b></div><div className="bg-black/30 rounded-lg p-3"><p className="text-pet-subtext mb-1">Castrado</p><b>{a.castrado?'Sim':'Não / não informado'}</b></div></div>
+            {a.observacoes&&<p className="text-xs text-pet-subtext mt-4 line-clamp-2">{a.observacoes}</p>}
+            <div className="flex gap-2 mt-5 pt-4 border-t border-pet-border"><button onClick={()=>editar(a)} className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-pet-border py-2.5 text-xs font-bold hover:bg-neutral-700"><Icons.Edit/> Editar</button><button onClick={()=>setDeletando(a.id)} className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-rose-900/50 text-rose-300 py-2.5 text-xs font-bold hover:bg-rose-500/10"><Icons.Trash/> Excluir</button></div>
+          </article>)}</div>}
+          <p className="text-[10px] text-pet-subtext mt-6">Endpoint configurado: <code>{apiUrl}</code> · GET, POST, PUT e DELETE</p>
+        </>:<section className="max-w-3xl mx-auto">
+          <button onClick={()=>{setTela('principal');setEditando(null);setForm(EMPTY)}} className="text-pet-subtext hover:text-white text-sm mb-5">← Voltar para os animais</button>
+          <div className="bg-pet-card border border-pet-border rounded-2xl overflow-hidden">
+            <div className="hero p-6 md:p-8 border-b border-pet-border"><p className="text-lime-300 text-xs font-extrabold uppercase tracking-[.2em] mb-2">Ficha do pet</p><h1 className="text-2xl md:text-3xl font-extrabold">{editando!==null?'Editar animal':'Cadastrar novo animal'}</h1><p className="text-pet-subtext text-sm mt-2">Preencha as informações e salve diretamente na API.</p></div>
+            <form onSubmit={salvar} className="p-6 md:p-8 space-y-5">
+              <div><label className={label}>Nome do animal *</label><input required value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="Ex.: Mel" className={field}/></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className={label}>Espécie *</label><select required value={form.especie} onChange={e=>setForm({...form,especie:e.target.value})} className={field}>{[['CACHORRO','Cachorro'],['GATO','Gato'],['AVE','Ave'],['ROEDOR','Roedor'],['REPTIL','Réptil'],['OUTRO','Outro']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div><div><label className={label}>Raça</label><input value={form.raca} onChange={e=>setForm({...form,raca:e.target.value})} placeholder="Ex.: Shih-tzu" className={field}/></div></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className={label}>Sexo</label><select value={form.sexo} onChange={e=>setForm({...form,sexo:e.target.value})} className={field}><option value="">Não informado</option><option value="MACHO">Macho</option><option value="FEMEA">Fêmea</option></select></div><div><label className={label}>Data de nascimento</label><input type="date" value={form.dataNascimento} onChange={e=>setForm({...form,dataNascimento:e.target.value})} className={field}/></div></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className={label}>Peso (kg)</label><input type="number" min="0" step="0.01" value={form.peso} onChange={e=>setForm({...form,peso:e.target.value})} placeholder="Ex.: 6.5" className={field}/></div><div><label className={label}>Cor</label><input value={form.cor} onChange={e=>setForm({...form,cor:e.target.value})} placeholder="Ex.: Branco e caramelo" className={field}/></div></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className={label}>Vacinação</label><select value={form.vacinacao} onChange={e=>setForm({...form,vacinacao:e.target.value})} className={field}><option value="EM_DIA">Em dia</option><option value="PENDENTE">Pendente</option><option value="DESCONHECIDA">Desconhecida</option></select></div><label className="flex items-center gap-3 bg-neutral-900 border border-pet-border rounded-lg px-4 py-3 cursor-pointer mt-5 sm:mt-0"><input type="checkbox" checked={form.castrado} onChange={e=>setForm({...form,castrado:e.target.checked})} className="w-4 h-4 accent-lime-400"/><span><b className="block text-sm">Animal castrado</b><small className="text-pet-subtext">Marque se aplicável</small></span></label></div>
+              <div><label className={label}>Observações</label><textarea rows="3" value={form.observacoes} onChange={e=>setForm({...form,observacoes:e.target.value})} placeholder="Alergias, cuidados especiais..." className={field}></textarea></div>
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2"><button type="button" onClick={()=>{setTela('principal');setEditando(null);setForm(EMPTY)}} className="flex-1 py-3 rounded-full border border-pet-border font-bold text-sm hover:bg-neutral-800">Cancelar</button><button type="submit" className="flex-1 py-3 rounded-full bg-lime-300 hover:bg-lime-200 text-black font-extrabold text-sm">{editando!==null?'Salvar alterações (PUT)':'Cadastrar animal (POST)'}</button></div>
+            </form>
+          </div>
+        </section>}
+      </div>
+    </main>
+    {showConfig&&<div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"><div className="modal max-w-lg w-full p-6 rounded-2xl space-y-5"><div className="flex justify-between items-center"><h3 className="font-extrabold">Configurar URL do Backend</h3><button onClick={()=>setShowConfig(false)} className="text-pet-subtext text-xl">×</button></div><p className="text-pet-subtext text-sm">Informe a rota base da API de animais. O front-end fará chamadas GET, POST, PUT e DELETE usando esse endpoint.</p><div><label className={label}>URL base da API</label><input value={urlEdit} onChange={e=>setUrlEdit(e.target.value)} placeholder="http://localhost:8080/api/animais" className={field}/></div><div className="flex gap-3"><button onClick={()=>setShowConfig(false)} className="flex-1 py-3 rounded-full border border-pet-border font-bold text-sm">Cancelar</button><button onClick={()=>{if(urlEdit.trim()){setApiUrl(urlEdit.trim().replace(/\/$/,''));setShowConfig(false)}}} className="flex-1 py-3 rounded-full bg-lime-300 text-black font-extrabold text-sm">Salvar e testar conexão</button></div></div></div>}
+    {deletando!==null&&<div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"><div className="modal max-w-sm w-full p-6 rounded-2xl text-center space-y-5"><div className="mx-auto w-12 h-12 rounded-full bg-rose-500/10 text-rose-300 flex items-center justify-center"><Icons.Trash size={22}/></div><h3 className="font-extrabold text-lg">Excluir este animal?</h3><p className="text-pet-subtext text-sm">A exclusão enviará <code className="text-rose-300">DELETE {apiUrl}/{deletando}</code> para sua API.</p><div className="flex gap-3"><button onClick={()=>setDeletando(null)} className="flex-1 py-3 rounded-full bg-neutral-800 font-bold text-sm">Cancelar</button><button onClick={()=>excluir(deletando)} className="flex-1 py-3 rounded-full bg-rose-600 font-extrabold text-sm">Excluir</button></div></div></div>}
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
